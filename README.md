@@ -1,4 +1,4 @@
-# CollectionVault_Peak
+# CollectionVault_Peek
 
 A peek at how CollectionVault is built.
 
