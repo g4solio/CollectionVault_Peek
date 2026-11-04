@@ -1,0 +1,46 @@
+# Template: the CI guards from CollectionVault's pipeline, with project names as
+# placeholders. Replace PROJECT and point the greps at the rules your ADRs state.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test -warnaserror
+      - name: Core stays pure (ADR 0001)
+        run: |
+          if grep -q PackageReference src/PROJECT.Core/*.csproj; then
+            echo "The core uses only the .NET base class library (ADR 0001)."; exit 1
+          fi
+          if grep -rnE 'DateTime(Offset)?\.(Now|UtcNow|Today)|\bFile\.|\bDirectory\.|HttpClient|\bEnvironment\.|\bConsole\.' src/PROJECT.Core --include=*.cs; then
+            echo "The core reads no clock, file, network or console: today's date is passed in."; exit 1
+          fi
+      - name: The app's start-up work ends before it reports started
+        run: |
+          if grep -rn 'ApplicationStarted\.' src/PROJECT.App --include=*.cs; then
+            echo "Start-up work goes in a step that ends before the app reports started, so a test host sees it done."; exit 1
+          fi
+      # No test runs the pages' scripts, so a syntax error would break a whole page with every test green.
+      # This parses only; a call to a deleted function still passes. Add ESLint's no-undef if that ever bites.
+      - name: Every page's scripts parse
+        run: |
+          node -e '
+            const fs = require("fs"), dir = "src/PROJECT.App/Pages";
+            let failed = false;
+            for (const file of fs.readdirSync(dir).filter(f => /\.(html|js)$/.test(f))) {
+              const text = fs.readFileSync(`${dir}/${file}`, "utf8");
+              const scripts = file.endsWith(".js") ? [text] : [...text.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+              for (const script of scripts)
+                try { new Function(script); }
+                catch (e) { console.log(`${dir}/${file}: ${e.message}`); failed = true; }
+            }
+            process.exit(failed ? 1 : 0);'

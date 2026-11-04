@@ -1,0 +1,38 @@
+name: guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# This repository's own guards. The model says that rules a script can check
+# run in CI, so the documents here are held to their own rules.
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Every ADR links the issue that decided it
+        run: |
+          failed=0
+          for f in docs/adr/[0-9]*.md; do
+            case "$f" in docs/adr/0000-template.md) continue;; esac
+            grep -qE 'github\.com/[^/]+/[^/]+/issues/[0-9]+' "$f" || { echo "$f: no issue link"; failed=1; }
+          done
+          exit $failed
+      - name: Every coding standard carries its Why
+        run: |
+          awk '
+            function check() { if (rule != "" && rule != "How to add a rule" && !why) { print rule ": no Why"; failed = 1 } }
+            /^## / { check(); rule = substr($0, 4); why = 0 }
+            /^Why:/ { why = 1 }
+            END { check(); exit failed }
+          ' CODING_STANDARDS.md
+      - name: Every glossary entry carries an Avoid list
+        run: |
+          awk '
+            function check() { if (term != "" && !avoid) { print term ": no Avoid list"; failed = 1 } }
+            /^\*\*[^*]+\*\* \(/ { check(); term = $0; avoid = 0 }
+            /^_Avoid_:/ { avoid = 1 }
+            END { check(); exit failed }
+          ' GLOSSARY.md
